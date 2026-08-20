@@ -5,8 +5,8 @@ services:
 
     environment:
       POSTGRES_DB: retailflow
-      POSTGRES_USER: creator
-      POSTGRES_PASSWORD: creator0650
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
 
     ports:
       - "5432:5432"
