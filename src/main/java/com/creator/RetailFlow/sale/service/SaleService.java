@@ -36,11 +36,23 @@ public class SaleService {
 
     @Transactional
     public Sale checkout(CheckoutRequest request) {
-
-        if (request.getItems() == null || request.getItems().isEmpty()) {
+        if (request == null || request.getItems() == null
+                || request.getItems().isEmpty()) {
             throw new IllegalArgumentException(
                     "A sale must contain at least one item"
             );
+        }
+
+        BigDecimal discount = request.getDiscount() == null
+                ? BigDecimal.ZERO
+                : request.getDiscount();
+
+        if (discount.signum() < 0) {
+            throw new IllegalArgumentException("Discount cannot be negative");
+        }
+
+        if (request.getPaymentMethod() == null) {
+            throw new IllegalArgumentException("Payment method is required");
         }
 
         Sale sale = new Sale();
@@ -49,32 +61,41 @@ public class SaleService {
         BigDecimal subtotal = BigDecimal.ZERO;
 
         for (CheckoutItemRequest itemRequest : request.getItems()) {
-
-            Product product = productRepository
-                    .findById(itemRequest.getProductId())
-                    .orElseThrow(() ->
-                            new ResourceNotFoundException(
-                                    "Product not found with id: "
-                                            + itemRequest.getProductId()
-                            )
-                    );
-
-            int quantity = itemRequest.getQuantity();
-
-            if (product.getStock() < quantity) {
+            if (itemRequest == null || itemRequest.getProductId() == null
+                    || itemRequest.getProductId() <= 0) {
                 throw new IllegalArgumentException(
-                        "Insufficient stock for product: "
-                                + product.getName()
+                        "Each item must have a valid product ID"
                 );
             }
 
-            // Calculate item subtotal (using price BEFORE stock is adjusted)
-            BigDecimal itemSubtotal =
-                    product.getSellingPrice()
-                            .multiply(BigDecimal.valueOf(quantity));
+            Integer requestedQuantity = itemRequest.getQuantity();
+            if (requestedQuantity == null || requestedQuantity <= 0) {
+                throw new IllegalArgumentException(
+                        "Each item quantity must be greater than 0"
+                );
+            }
+
+            Product product = productRepository
+                    .findByIdForUpdate(itemRequest.getProductId())
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Product not found with id: "
+                                    + itemRequest.getProductId()
+                    ));
+
+            int quantity = requestedQuantity;
+            int availableStock = product.getStock();
+            if (availableStock < quantity) {
+                throw new IllegalArgumentException(
+                        "Insufficient stock for product: "
+                                + product.getName()
+                                + ". Available stock: " + availableStock
+                );
+            }
+
+            BigDecimal itemSubtotal = product.getSellingPrice()
+                    .multiply(BigDecimal.valueOf(quantity));
 
             SaleItem saleItem = new SaleItem();
-
             saleItem.setSale(sale);
             saleItem.setProduct(product);
             saleItem.setProductName(product.getName());
@@ -82,32 +103,16 @@ public class SaleService {
             saleItem.setPrice(product.getSellingPrice());
             saleItem.setQuantity(quantity);
             saleItem.setSubtotal(itemSubtotal);
-
             sale.getItems().add(saleItem);
 
             subtotal = subtotal.add(itemSubtotal);
 
-            // Reduce stock via InventoryService so it's logged consistently
-            // with every other stock change in the system
             StockAdjustmentRequest adjustment = new StockAdjustmentRequest();
             adjustment.setProductId(product.getId());
             adjustment.setType(InventoryTransactionType.STOCK_OUT);
             adjustment.setQuantity(quantity);
             adjustment.setReason("Sale " + sale.getInvoiceNumber());
-
             inventoryService.adjustStock(adjustment);
-        }
-
-        BigDecimal discount = request.getDiscount();
-
-        if (discount == null) {
-            discount = BigDecimal.ZERO;
-        }
-
-        if (discount.compareTo(BigDecimal.ZERO) < 0) {
-            throw new IllegalArgumentException(
-                    "Discount cannot be negative"
-            );
         }
 
         if (discount.compareTo(subtotal) > 0) {
@@ -116,18 +121,18 @@ public class SaleService {
             );
         }
 
-        BigDecimal total = subtotal.subtract(discount);
-
         sale.setSubtotal(subtotal);
         sale.setDiscount(discount);
-        sale.setTotal(total);
+        sale.setTotal(subtotal.subtract(discount));
         sale.setPaymentMethod(request.getPaymentMethod());
 
         return saleRepository.save(sale);
     }
 
     private String generateInvoiceNumber() {
-        return "INV-" + UUID.randomUUID().toString()
-                .substring(0, 8).toUpperCase();
+        return "INV-" + UUID.randomUUID()
+                .toString()
+                .substring(0, 8)
+                .toUpperCase();
     }
 }

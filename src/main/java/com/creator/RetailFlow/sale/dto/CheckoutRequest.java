@@ -2,6 +2,7 @@ package com.creator.RetailFlow.sale.dto;
 
 import com.creator.RetailFlow.sale.entity.PaymentMethod;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 
@@ -14,6 +15,8 @@ public class CheckoutRequest {
     @Valid
     private List<CheckoutItemRequest> items;
 
+    @NotNull(message = "Discount is required")
+    @DecimalMin(value = "0.00", message = "Discount cannot be negative")
     private BigDecimal discount = BigDecimal.ZERO;
 
     @NotNull(message = "Payment method is required")
