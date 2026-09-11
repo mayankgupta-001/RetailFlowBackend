@@ -1,16 +1,15 @@
 package com.creator.RetailFlow.exception;
 
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.bind.annotation.RestControllerAdvice;
-import jakarta.persistence.OptimisticLockException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
-
-import java.util.stream.Collectors;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -19,7 +18,6 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, String>> handleNotFound(
             ResourceNotFoundException exception
     ) {
-
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(Map.of(
                         "error", exception.getMessage()
@@ -30,7 +28,6 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, String>> handleBadRequest(
             IllegalArgumentException exception
     ) {
-
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(Map.of(
                         "error", exception.getMessage()
@@ -50,12 +47,21 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest().body(Map.of("error", message));
     }
 
-    @ExceptionHandler(OptimisticLockException.class)
-    public ResponseEntity<Map<String, String>> handleOptimisticLock(
-            OptimisticLockException exception
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, String>> handleUnreadableBody(
+            HttpMessageNotReadableException exception
+    ) {
+        return ResponseEntity.badRequest().body(Map.of(
+                "error", "Request body is missing, malformed, or contains an invalid value"
+        ));
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<Map<String, String>> handleDataIntegrity(
+            DataIntegrityViolationException exception
     ) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
-                "error", "Stock was changed by another checkout. Please retry."
+                "error", "The request conflicts with existing data"
         ));
     }
 }

@@ -32,7 +32,8 @@ public class InventoryService {
     public void adjustStock(StockAdjustmentRequest request) {
 
         // 1. Find the product
-        Product product = productRepository.findById(request.getProductId())
+//        Product product = productRepository.findById(request.getProductId())
+        Product product = productRepository.findByIdForUpdate(request.getProductId())
                 .orElseThrow(() ->
                         new ResourceNotFoundException(
                                 "Product not found with id: "

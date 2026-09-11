@@ -7,6 +7,8 @@ import com.creator.RetailFlow.sale.entity.Sale;
 import com.creator.RetailFlow.sale.service.SaleService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -15,7 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/sales" )
+@RequestMapping("/api/sales")
 public class SaleController {
 
     private final SaleService saleService;
@@ -27,9 +29,24 @@ public class SaleController {
     @PostMapping("/checkout")
     public ResponseEntity<SaleResponse> checkout(
             @Valid @RequestBody CheckoutRequest request) {
-
         Sale sale = saleService.checkout(request);
+        return ResponseEntity.ok(toResponse(sale));
+    }
 
+    @GetMapping("/{id}")
+    public ResponseEntity<SaleResponse> getById(@PathVariable Long id) {
+        Sale sale = saleService.getById(id);
+        return ResponseEntity.ok(toResponse(sale));
+    }
+
+    @GetMapping("/invoice/{invoiceNumber}")
+    public ResponseEntity<SaleResponse> getByInvoiceNumber(
+            @PathVariable String invoiceNumber) {
+        Sale sale = saleService.getByInvoiceNumber(invoiceNumber);
+        return ResponseEntity.ok(toResponse(sale));
+    }
+
+    private SaleResponse toResponse(Sale sale) {
         SaleResponse response = new SaleResponse();
         response.setId(sale.getId());
         response.setInvoiceNumber(sale.getInvoiceNumber());
@@ -43,6 +60,12 @@ public class SaleController {
                 .stream()
                 .map(item -> {
                     SaleItemResponse itemResponse = new SaleItemResponse();
+                    itemResponse.setId(item.getId());
+                    itemResponse.setProductId(
+                            item.getProduct() != null
+                                    ? item.getProduct().getId()
+                                    : null
+                    );
                     itemResponse.setProductName(item.getProductName());
                     itemResponse.setBarcode(item.getBarcode());
                     itemResponse.setPrice(item.getPrice());
@@ -53,7 +76,6 @@ public class SaleController {
                 .toList();
 
         response.setItems(itemResponses);
-
-        return ResponseEntity.ok(response);
+        return response;
     }
 }

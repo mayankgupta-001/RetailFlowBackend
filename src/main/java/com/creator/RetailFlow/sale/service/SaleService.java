@@ -15,6 +15,9 @@ import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -36,11 +39,16 @@ public class SaleService {
 
     @Transactional
     public Sale checkout(CheckoutRequest request) {
+
         if (request == null || request.getItems() == null
                 || request.getItems().isEmpty()) {
             throw new IllegalArgumentException(
                     "A sale must contain at least one item"
             );
+        }
+
+        if (request.getPaymentMethod() == null) {
+            throw new IllegalArgumentException("Payment method is required");
         }
 
         BigDecimal discount = request.getDiscount() == null
@@ -51,15 +59,9 @@ public class SaleService {
             throw new IllegalArgumentException("Discount cannot be negative");
         }
 
-        if (request.getPaymentMethod() == null) {
-            throw new IllegalArgumentException("Payment method is required");
-        }
-
-        Sale sale = new Sale();
-        sale.setInvoiceNumber(generateInvoiceNumber());
-
-        BigDecimal subtotal = BigDecimal.ZERO;
-
+        // Aggregate duplicate product lines and validate quantities up
+        // front, before locking or touching anything.
+        Map<Long, Integer> quantityByProductId = new LinkedHashMap<>();
         for (CheckoutItemRequest itemRequest : request.getItems()) {
             if (itemRequest == null || itemRequest.getProductId() == null
                     || itemRequest.getProductId() <= 0) {
@@ -67,23 +69,44 @@ public class SaleService {
                         "Each item must have a valid product ID"
                 );
             }
-
             Integer requestedQuantity = itemRequest.getQuantity();
             if (requestedQuantity == null || requestedQuantity <= 0) {
                 throw new IllegalArgumentException(
                         "Each item quantity must be greater than 0"
                 );
             }
+            quantityByProductId.merge(
+                    itemRequest.getProductId(), requestedQuantity, Integer::sum
+            );
+        }
 
+        // Lock products in a consistent (sorted) order across all
+        // checkouts, so two concurrent carts touching the same two
+        // products can never deadlock waiting on each other's locks.
+        var sortedProductIds = quantityByProductId.keySet().stream()
+                .sorted(Comparator.naturalOrder())
+                .toList();
+
+        Sale sale = new Sale();
+        sale.setInvoiceNumber(generateInvoiceNumber());
+
+        BigDecimal subtotal = BigDecimal.ZERO;
+        Map<Long, Product> lockedProducts = new LinkedHashMap<>();
+        Map<Long, BigDecimal> subtotalByProductId = new LinkedHashMap<>();
+
+        // Pass 1: lock every product, verify stock, compute subtotals.
+        // No stock is mutated yet — if anything here fails, nothing has
+        // changed and there's nothing to roll back.
+        for (Long productId : sortedProductIds) {
             Product product = productRepository
-                    .findByIdForUpdate(itemRequest.getProductId())
+                    .findByIdForUpdate(productId)
                     .orElseThrow(() -> new ResourceNotFoundException(
-                            "Product not found with id: "
-                                    + itemRequest.getProductId()
+                            "Product not found with id: " + productId
                     ));
 
-            int quantity = requestedQuantity;
+            int quantity = quantityByProductId.get(productId);
             int availableStock = product.getStock();
+
             if (availableStock < quantity) {
                 throw new IllegalArgumentException(
                         "Insufficient stock for product: "
@@ -95,6 +118,26 @@ public class SaleService {
             BigDecimal itemSubtotal = product.getSellingPrice()
                     .multiply(BigDecimal.valueOf(quantity));
 
+            lockedProducts.put(productId, product);
+            subtotalByProductId.put(productId, itemSubtotal);
+            subtotal = subtotal.add(itemSubtotal);
+        }
+
+        // Discount is validated against the real subtotal before any
+        // mutation happens.
+        if (discount.compareTo(subtotal) > 0) {
+            throw new IllegalArgumentException(
+                    "Discount cannot be greater than subtotal"
+            );
+        }
+
+        // Pass 2: everything is validated — now actually build sale
+        // items and reduce stock.
+        for (Long productId : sortedProductIds) {
+            Product product = lockedProducts.get(productId);
+            int quantity = quantityByProductId.get(productId);
+            BigDecimal itemSubtotal = subtotalByProductId.get(productId);
+
             SaleItem saleItem = new SaleItem();
             saleItem.setSale(sale);
             saleItem.setProduct(product);
@@ -105,20 +148,12 @@ public class SaleService {
             saleItem.setSubtotal(itemSubtotal);
             sale.getItems().add(saleItem);
 
-            subtotal = subtotal.add(itemSubtotal);
-
             StockAdjustmentRequest adjustment = new StockAdjustmentRequest();
-            adjustment.setProductId(product.getId());
+            adjustment.setProductId(productId);
             adjustment.setType(InventoryTransactionType.STOCK_OUT);
             adjustment.setQuantity(quantity);
             adjustment.setReason("Sale " + sale.getInvoiceNumber());
             inventoryService.adjustStock(adjustment);
-        }
-
-        if (discount.compareTo(subtotal) > 0) {
-            throw new IllegalArgumentException(
-                    "Discount cannot be greater than subtotal"
-            );
         }
 
         sale.setSubtotal(subtotal);
@@ -129,10 +164,22 @@ public class SaleService {
         return saleRepository.save(sale);
     }
 
+    public Sale getById(Long id) {
+        return saleRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Sale not found with id: " + id
+                ));
+    }
+
+    public Sale getByInvoiceNumber(String invoiceNumber) {
+        return saleRepository.findByInvoiceNumber(invoiceNumber)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Sale not found with invoice number: " + invoiceNumber
+                ));
+    }
+
     private String generateInvoiceNumber() {
-        return "INV-" + UUID.randomUUID()
-                .toString()
-                .substring(0, 8)
-                .toUpperCase();
+        // Full UUID — practically collision-proof, unlike an 8-char slice.
+        return "INV-" + UUID.randomUUID().toString().toUpperCase();
     }
 }
