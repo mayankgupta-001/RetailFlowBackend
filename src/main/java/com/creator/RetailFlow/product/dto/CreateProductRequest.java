@@ -12,7 +12,8 @@ public class CreateProductRequest {
     @NotBlank(message = "Product name is required")
     private String name;
 
-    @NotBlank(message = "Barcode is required")
+    // No longer required — if omitted, the backend auto-generates
+    // an EAN-13 barcode.
     private String barcode;
 
     @NotNull(message = "Selling price is required")
