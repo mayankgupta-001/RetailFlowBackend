@@ -7,13 +7,9 @@ import com.creator.RetailFlow.sale.entity.Sale;
 import com.creator.RetailFlow.sale.service.SaleService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @RestController
@@ -55,6 +51,7 @@ public class SaleController {
         response.setTotal(sale.getTotal());
         response.setPaymentMethod(sale.getPaymentMethod());
         response.setCreatedAt(sale.getCreatedAt());
+        response.setVoided(sale.isVoided());
 
         List<SaleItemResponse> itemResponses = sale.getItems()
                 .stream()
@@ -77,5 +74,22 @@ public class SaleController {
 
         response.setItems(itemResponses);
         return response;
+    }
+    @GetMapping
+    public List<SaleResponse> getSalesBetween(
+            @RequestParam("from") String from,
+            @RequestParam("to") String to
+    ) {
+        LocalDateTime start = LocalDateTime.parse(from);
+        LocalDateTime end = LocalDateTime.parse(to);
+        return saleService.getSalesBetween(start, end)
+                .stream()
+                .map(this::toResponse)
+                .toList();
+    }
+    @PostMapping("/{id}/void")
+    public ResponseEntity<SaleResponse> voidSale(@PathVariable Long id) {
+        Sale sale = saleService.voidSale(id);
+        return ResponseEntity.ok(toResponse(sale));
     }
 }

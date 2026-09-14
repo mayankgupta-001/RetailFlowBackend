@@ -15,10 +15,8 @@ import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.util.Comparator;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.UUID;
+import java.time.LocalDateTime;
+import java.util.*;
 
 @Service
 public class SaleService {
@@ -181,5 +179,31 @@ public class SaleService {
     private String generateInvoiceNumber() {
         // Full UUID — practically collision-proof, unlike an 8-char slice.
         return "INV-" + UUID.randomUUID().toString().toUpperCase();
+    }
+    public List<Sale> getSalesBetween(LocalDateTime start, LocalDateTime end) {
+        return saleRepository.findByCreatedAtBetweenOrderByCreatedAtDesc(start, end);
+    }
+    @Transactional
+    public Sale voidSale(Long id) {
+        Sale sale = saleRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Sale not found with id: " + id
+                ));
+
+        if (sale.isVoided()) {
+            throw new IllegalArgumentException("Sale is already voided");
+        }
+
+        for (SaleItem item : sale.getItems()) {
+            StockAdjustmentRequest adjustment = new StockAdjustmentRequest();
+            adjustment.setProductId(item.getProduct().getId());
+            adjustment.setType(InventoryTransactionType.STOCK_IN);
+            adjustment.setQuantity(item.getQuantity());
+            adjustment.setReason("Void of sale " + sale.getInvoiceNumber());
+            inventoryService.adjustStock(adjustment);
+        }
+
+        sale.setVoided(true);
+        return saleRepository.save(sale);
     }
 }

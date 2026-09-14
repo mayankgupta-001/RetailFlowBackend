@@ -18,6 +18,9 @@ public class Sale {
     @Column(nullable = false, unique = true)
     private String invoiceNumber;
 
+    @Column(nullable = false)
+    private boolean voided = false;
+
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal subtotal;
 
@@ -108,5 +111,13 @@ public class Sale {
 
     public void setItems(List<SaleItem> items) {
         this.items = items;
+    }
+
+    public boolean isVoided() {
+        return voided;
+    }
+
+    public void setVoided(boolean voided) {
+        this.voided = voided;
     }
 }

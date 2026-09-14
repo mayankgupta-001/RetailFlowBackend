@@ -16,6 +16,14 @@ public class SaleResponse {
     private PaymentMethod paymentMethod;
     private LocalDateTime createdAt;
     private List<SaleItemResponse> items;
+    private boolean voided;
+    public boolean isVoided() {
+        return voided;
+    }
+
+    public void setVoided(boolean voided) {
+        this.voided = voided;
+    }
 
     public Long getId() {
         return id;
