@@ -23,7 +23,7 @@ public class InventoryController {
 
     @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/adjust")
-    @ResponseStatus(HttpStatus.OK)
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     public void adjustStock(
             @Valid @RequestBody StockAdjustmentRequest request
     ) {
