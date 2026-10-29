@@ -609,5 +609,3 @@ GLA University, Mathura
 ## 📄 License
 
 This project is currently under development and is intended for educational, portfolio, and open-source development purposes.
-
-A formal open-source license will be added before accepting external contributions.
