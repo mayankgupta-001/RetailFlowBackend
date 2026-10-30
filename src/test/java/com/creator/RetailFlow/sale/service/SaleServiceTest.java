@@ -6,6 +6,7 @@ import com.creator.RetailFlow.product.entity.Product;
 import com.creator.RetailFlow.product.repository.ProductRepository;
 import com.creator.RetailFlow.sale.dto.CheckoutItemRequest;
 import com.creator.RetailFlow.sale.dto.CheckoutRequest;
+import com.creator.RetailFlow.sale.entity.DiscountType;
 import com.creator.RetailFlow.sale.entity.PaymentMethod;
 import com.creator.RetailFlow.sale.entity.Sale;
 import com.creator.RetailFlow.sale.repository.SaleRepository;
@@ -42,7 +43,8 @@ class SaleServiceTest {
     private SaleService saleService;
 
     @Test
-    void checkoutCalculatesTotalsAndReducesStock() {
+    void checkoutCalculatesFixedDiscountCorrectly() {
+
         Product product = product(
                 "Coffee",
                 "8900001",
@@ -52,66 +54,89 @@ class SaleServiceTest {
 
         when(productRepository.findByIdForUpdate(1L))
                 .thenReturn(Optional.of(product));
+
         when(saleRepository.save(any(Sale.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        CheckoutRequest request = request(1L, 2, "25.00", PaymentMethod.CASH);
+        CheckoutRequest request = request(
+                1L,
+                2,
+                "25.00",
+                DiscountType.FIXED,
+                PaymentMethod.CASH
+        );
 
         Sale result = saleService.checkout(request);
 
         assertThat(result.getSubtotal())
                 .isEqualByComparingTo("200.00");
+
         assertThat(result.getDiscount())
                 .isEqualByComparingTo("25.00");
+
         assertThat(result.getTotal())
                 .isEqualByComparingTo("175.00");
-        assertThat(result.getItems()).hasSize(1);
+
+        assertThat(result.getItems())
+                .hasSize(1);
 
         verify(inventoryService)
                 .adjustStock(any(StockAdjustmentRequest.class));
-        verify(saleRepository).save(any(Sale.class));
+
+        verify(saleRepository)
+                .save(any(Sale.class));
     }
 
     @Test
-    void checkoutRejectsEmptyCart() {
-        CheckoutRequest request = new CheckoutRequest();
-        request.setItems(List.of());
-        request.setDiscount(BigDecimal.ZERO);
-        request.setPaymentMethod(PaymentMethod.CASH);
+    void checkoutCalculatesPercentageDiscountCorrectly() {
 
-        assertThatThrownBy(() -> saleService.checkout(request))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("A sale must contain at least one item");
-
-        verifyNoSaleOrInventoryChange();
-    }
-
-    @Test
-    void checkoutRejectsMissingProduct() {
-        when(productRepository.findByIdForUpdate(999L))
-                .thenReturn(Optional.empty());
-
-        CheckoutRequest request = request(
-                999L,
-                1,
-                "0.00",
-                PaymentMethod.CARD
-        );
-
-        assertThatThrownBy(() -> saleService.checkout(request))
-                .isInstanceOf(RuntimeException.class)
-                .hasMessageContaining("Product not found with id: 999");
-
-        verifyNoSaleOrInventoryChange();
-    }
-
-    @Test
-    void checkoutRejectsInsufficientStock() {
         Product product = product(
                 "Coffee",
                 "8900001",
                 "100.00",
-                1
+                10
+        );
+
+        when(productRepository.findByIdForUpdate(1L))
+                .thenReturn(Optional.of(product));
+
+        when(saleRepository.save(any(Sale.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        CheckoutRequest request = request(
+                1L,
+                2,
+                "20.00",
+                DiscountType.PERCENTAGE,
+                PaymentMethod.CARD
+        );
+
+        Sale result = saleService.checkout(request);
+
+        assertThat(result.getSubtotal())
+                .isEqualByComparingTo("200.00");
+
+        assertThat(result.getDiscount())
+                .isEqualByComparingTo("40.00");
+
+        assertThat(result.getTotal())
+                .isEqualByComparingTo("160.00");
+
+        verify(inventoryService)
+                .adjustStock(any(StockAdjustmentRequest.class));
+
+        verify(saleRepository)
+                .save(any(Sale.class));
+    }
+
+    @Test
+    void checkoutRejectsPercentageGreaterThan100() {
+
+        Product product = product(
+                "Coffee",
+                "8900001",
+                "100.00",
+                10
         );
 
         when(productRepository.findByIdForUpdate(1L))
@@ -119,20 +144,62 @@ class SaleServiceTest {
 
         CheckoutRequest request = request(
                 1L,
-                2,
-                "0.00",
+                1,
+                "100.01",
+                DiscountType.PERCENTAGE,
                 PaymentMethod.CARD
         );
 
-        assertThatThrownBy(() -> saleService.checkout(request))
+        assertThatThrownBy(
+                () -> saleService.checkout(request)
+        )
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Insufficient stock");
+                .hasMessage(
+                        "Percentage discount cannot exceed 100%"
+                );
 
         verifyNoSaleOrInventoryChange();
     }
 
     @Test
-    void checkoutRejectsDiscountGreaterThanSubtotalBeforeStockChange() {
+    void checkoutAllowsExactly100PercentDiscount() {
+
+        Product product = product(
+                "Coffee",
+                "8900001",
+                "100.00",
+                10
+        );
+
+        when(productRepository.findByIdForUpdate(1L))
+                .thenReturn(Optional.of(product));
+
+        when(saleRepository.save(any(Sale.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        CheckoutRequest request = request(
+                1L,
+                2,
+                "100.00",
+                DiscountType.PERCENTAGE,
+                PaymentMethod.CARD
+        );
+
+        Sale result = saleService.checkout(request);
+
+        assertThat(result.getSubtotal())
+                .isEqualByComparingTo("200.00");
+
+        assertThat(result.getDiscount())
+                .isEqualByComparingTo("200.00");
+
+        assertThat(result.getTotal())
+                .isEqualByComparingTo("0.00");
+    }
+
+    @Test
+    void checkoutRejectsFixedDiscountGreaterThanSubtotal() {
+
         Product product = product(
                 "Coffee",
                 "8900001",
@@ -147,72 +214,322 @@ class SaleServiceTest {
                 1L,
                 1,
                 "101.00",
+                DiscountType.FIXED,
                 PaymentMethod.UPI
         );
 
-        assertThatThrownBy(() -> saleService.checkout(request))
+        assertThatThrownBy(
+                () -> saleService.checkout(request)
+        )
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("Discount cannot be greater than subtotal");
+                .hasMessage(
+                        "Discount cannot be greater than subtotal"
+                );
 
-        // This assertion requires SaleService to validate the final discount
-        // before calling inventoryService.adjustStock().
-        verify(inventoryService, never())
-                .adjustStock(any(StockAdjustmentRequest.class));
-        verify(saleRepository, never()).save(any(Sale.class));
+        verifyNoSaleOrInventoryChange();
+    }
+
+    @Test
+    void checkoutRejectsPercentageDiscountAboveMaximumAmount() {
+
+        Product product = product(
+                "Laptop",
+                "8900002",
+                "50000.00",
+                10
+        );
+
+        when(productRepository.findByIdForUpdate(1L))
+                .thenReturn(Optional.of(product));
+
+        CheckoutRequest request = request(
+                1L,
+                1,
+                "20.00",
+                DiscountType.PERCENTAGE,
+                PaymentMethod.CARD
+        );
+
+        /*
+         * 20% of ₹50,000 = ₹10,000.
+         *
+         * Maximum configured discount = ₹5,000.
+         */
+        assertThatThrownBy(
+                () -> saleService.checkout(request)
+        )
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage(
+                        "Discount exceeds the maximum allowed amount"
+                );
+
+        verifyNoSaleOrInventoryChange();
+    }
+
+    @Test
+    void checkoutRejectsFixedDiscountAboveMaximumAmount() {
+
+        Product product = product(
+                "Laptop",
+                "8900002",
+                "10000.00",
+                10
+        );
+
+        when(productRepository.findByIdForUpdate(1L))
+                .thenReturn(Optional.of(product));
+
+        CheckoutRequest request = request(
+                1L,
+                1,
+                "5000.01",
+                DiscountType.FIXED,
+                PaymentMethod.CARD
+        );
+
+        assertThatThrownBy(
+                () -> saleService.checkout(request)
+        )
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage(
+                        "Discount exceeds the maximum allowed amount"
+                );
+
+        verifyNoSaleOrInventoryChange();
+    }
+
+    @Test
+    void checkoutAllowsDiscountExactlyAtMaximumAmount() {
+
+        Product product = product(
+                "Laptop",
+                "8900002",
+                "10000.00",
+                10
+        );
+
+        when(productRepository.findByIdForUpdate(1L))
+                .thenReturn(Optional.of(product));
+
+        when(saleRepository.save(any(Sale.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        CheckoutRequest request = request(
+                1L,
+                1,
+                "5000.00",
+                DiscountType.FIXED,
+                PaymentMethod.CASH
+        );
+
+        Sale result = saleService.checkout(request);
+
+        assertThat(result.getSubtotal())
+                .isEqualByComparingTo("10000.00");
+
+        assertThat(result.getDiscount())
+                .isEqualByComparingTo("5000.00");
+
+        assertThat(result.getTotal())
+                .isEqualByComparingTo("5000.00");
+    }
+
+    @Test
+    void checkoutRejectsEmptyCart() {
+
+        CheckoutRequest request = new CheckoutRequest();
+
+        request.setItems(List.of());
+        request.setDiscount(BigDecimal.ZERO);
+        request.setDiscountType(DiscountType.FIXED);
+        request.setPaymentMethod(PaymentMethod.CASH);
+
+        assertThatThrownBy(
+                () -> saleService.checkout(request)
+        )
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage(
+                        "A sale must contain at least one item"
+                );
+
+        verifyNoSaleOrInventoryChange();
+    }
+
+    @Test
+    void checkoutRejectsMissingProduct() {
+
+        when(productRepository.findByIdForUpdate(999L))
+                .thenReturn(Optional.empty());
+
+        CheckoutRequest request = request(
+                999L,
+                1,
+                "0.00",
+                DiscountType.FIXED,
+                PaymentMethod.CARD
+        );
+
+        assertThatThrownBy(
+                () -> saleService.checkout(request)
+        )
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining(
+                        "Product not found with id: 999"
+                );
+
+        verifyNoSaleOrInventoryChange();
+    }
+
+    @Test
+    void checkoutRejectsInsufficientStock() {
+
+        Product product = product(
+                "Coffee",
+                "8900001",
+                "100.00",
+                1
+        );
+
+        when(productRepository.findByIdForUpdate(1L))
+                .thenReturn(Optional.of(product));
+
+        CheckoutRequest request = request(
+                1L,
+                2,
+                "0.00",
+                DiscountType.FIXED,
+                PaymentMethod.CARD
+        );
+
+        assertThatThrownBy(
+                () -> saleService.checkout(request)
+        )
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining(
+                        "Insufficient stock"
+                );
+
+        verifyNoSaleOrInventoryChange();
     }
 
     @Test
     void checkoutRejectsNegativeDiscount() {
+
         CheckoutRequest request = request(
                 1L,
                 1,
                 "-1.00",
+                DiscountType.FIXED,
                 PaymentMethod.CASH
         );
 
-        assertThatThrownBy(() -> saleService.checkout(request))
+        assertThatThrownBy(
+                () -> saleService.checkout(request)
+        )
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("Discount cannot be negative");
+                .hasMessage(
+                        "Discount cannot be negative"
+                );
 
         verifyNoSaleOrInventoryChange();
     }
 
     @Test
     void checkoutRejectsInvalidProductId() {
+
         CheckoutItemRequest item = new CheckoutItemRequest();
+
         item.setProductId(0L);
         item.setQuantity(1);
 
         CheckoutRequest request = new CheckoutRequest();
+
         request.setItems(List.of(item));
         request.setDiscount(BigDecimal.ZERO);
+        request.setDiscountType(DiscountType.FIXED);
         request.setPaymentMethod(PaymentMethod.CASH);
 
-        assertThatThrownBy(() -> saleService.checkout(request))
+        assertThatThrownBy(
+                () -> saleService.checkout(request)
+        )
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("Each item must have a valid product ID");
+                .hasMessage(
+                        "Each item must have a valid product ID"
+                );
 
-        verify(productRepository, never()).findByIdForUpdate(any());
+        verify(
+                productRepository,
+                never()
+        ).findByIdForUpdate(any());
+
         verifyNoSaleOrInventoryChange();
     }
 
     @Test
     void checkoutRejectsInvalidQuantity() {
+
         CheckoutItemRequest item = new CheckoutItemRequest();
+
         item.setProductId(1L);
         item.setQuantity(0);
 
         CheckoutRequest request = new CheckoutRequest();
+
         request.setItems(List.of(item));
         request.setDiscount(BigDecimal.ZERO);
+        request.setDiscountType(DiscountType.FIXED);
         request.setPaymentMethod(PaymentMethod.CASH);
 
-        assertThatThrownBy(() -> saleService.checkout(request))
+        assertThatThrownBy(
+                () -> saleService.checkout(request)
+        )
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage("Each item quantity must be greater than 0");
+                .hasMessage(
+                        "Each item quantity must be greater than 0"
+                );
 
-        verify(productRepository, never()).findByIdForUpdate(any());
+        verify(
+                productRepository,
+                never()
+        ).findByIdForUpdate(any());
+
         verifyNoSaleOrInventoryChange();
+    }
+
+    @Test
+    void checkoutAppliesZeroDiscountCorrectly() {
+
+        Product product = product(
+                "Coffee",
+                "8900001",
+                "100.00",
+                10
+        );
+
+        when(productRepository.findByIdForUpdate(1L))
+                .thenReturn(Optional.of(product));
+
+        when(saleRepository.save(any(Sale.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        CheckoutRequest request = request(
+                1L,
+                2,
+                "0.00",
+                DiscountType.PERCENTAGE,
+                PaymentMethod.CASH
+        );
+
+        Sale result = saleService.checkout(request);
+
+        assertThat(result.getSubtotal())
+                .isEqualByComparingTo("200.00");
+
+        assertThat(result.getDiscount())
+                .isEqualByComparingTo("0.00");
+
+        assertThat(result.getTotal())
+                .isEqualByComparingTo("200.00");
     }
 
     private Product product(
@@ -221,12 +538,17 @@ class SaleServiceTest {
             String sellingPrice,
             int stock
     ) {
+
         Product product = new Product();
+
         product.setName(name);
         product.setBarcode(barcode);
-        product.setSellingPrice(new BigDecimal(sellingPrice));
+        product.setSellingPrice(
+                new BigDecimal(sellingPrice)
+        );
         product.setStock(stock);
         product.setMinStock(0);
+
         return product;
     }
 
@@ -234,22 +556,43 @@ class SaleServiceTest {
             Long productId,
             int quantity,
             String discount,
+            DiscountType discountType,
             PaymentMethod paymentMethod
     ) {
-        CheckoutItemRequest item = new CheckoutItemRequest();
+
+        CheckoutItemRequest item =
+                new CheckoutItemRequest();
+
         item.setProductId(productId);
         item.setQuantity(quantity);
 
-        CheckoutRequest request = new CheckoutRequest();
+        CheckoutRequest request =
+                new CheckoutRequest();
+
         request.setItems(List.of(item));
-        request.setDiscount(new BigDecimal(discount));
+        request.setDiscount(
+                new BigDecimal(discount)
+        );
+        request.setDiscountType(discountType);
         request.setPaymentMethod(paymentMethod);
+
         return request;
     }
 
     private void verifyNoSaleOrInventoryChange() {
-        verify(inventoryService, never())
-                .adjustStock(any(StockAdjustmentRequest.class));
-        verify(saleRepository, never()).save(any(Sale.class));
+
+        verify(
+                inventoryService,
+                never()
+        ).adjustStock(
+                any(StockAdjustmentRequest.class)
+        );
+
+        verify(
+                saleRepository,
+                never()
+        ).save(
+                any(Sale.class)
+        );
     }
 }
