@@ -1,5 +1,6 @@
 package com.creator.RetailFlow.sale.dto;
 
+import com.creator.RetailFlow.sale.entity.DiscountType;
 import com.creator.RetailFlow.sale.entity.PaymentMethod;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
@@ -17,9 +18,19 @@ public class CheckoutRequest {
     private List<CheckoutItemRequest> items;
 
     @NotNull(message = "Discount is required")
-    @DecimalMin(value = "0.00", message = "Discount cannot be negative")
-    @Digits(integer = 10, fraction = 2, message = "Discount must have at most 2 decimal places")
+    @DecimalMin(
+            value = "0.00",
+            message = "Discount cannot be negative"
+    )
+    @Digits(
+            integer = 10,
+            fraction = 2,
+            message = "Discount must have at most 2 decimal places"
+    )
     private BigDecimal discount = BigDecimal.ZERO;
+
+    @NotNull(message = "Discount type is required")
+    private DiscountType discountType = DiscountType.FIXED;
 
     @NotNull(message = "Payment method is required")
     private PaymentMethod paymentMethod;
@@ -38,6 +49,14 @@ public class CheckoutRequest {
 
     public void setDiscount(BigDecimal discount) {
         this.discount = discount;
+    }
+
+    public DiscountType getDiscountType() {
+        return discountType;
+    }
+
+    public void setDiscountType(DiscountType discountType) {
+        this.discountType = discountType;
     }
 
     public PaymentMethod getPaymentMethod() {
