@@ -15,6 +15,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import com.creator.RetailFlow.sale.entity.Discount;
+import com.creator.RetailFlow.sale.repository.DiscountRepository;
+
+import java.time.LocalDateTime;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -38,6 +42,9 @@ class SaleServiceTest {
 
     @Mock
     private InventoryService inventoryService;
+
+    @Mock
+    private DiscountRepository discountRepository;
 
     @InjectMocks
     private SaleService saleService;
@@ -86,6 +93,8 @@ class SaleServiceTest {
         verify(saleRepository)
                 .save(any(Sale.class));
     }
+
+
 
     @Test
     void checkoutCalculatesPercentageDiscountCorrectly() {
@@ -415,6 +424,16 @@ class SaleServiceTest {
     @Test
     void checkoutRejectsNegativeDiscount() {
 
+        Product product = product(
+                "Coffee",
+                "8900001",
+                "100.00",
+                10
+        );
+
+        when(productRepository.findByIdForUpdate(1L))
+                .thenReturn(Optional.of(product));
+
         CheckoutRequest request = request(
                 1L,
                 1,
@@ -427,9 +446,7 @@ class SaleServiceTest {
                 () -> saleService.checkout(request)
         )
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessage(
-                        "Discount cannot be negative"
-                );
+                .hasMessage("Discount cannot be negative");
 
         verifyNoSaleOrInventoryChange();
     }
@@ -532,6 +549,202 @@ class SaleServiceTest {
                 .isEqualByComparingTo("200.00");
     }
 
+    @Test
+    void checkoutAppliesActiveScheduledDiscount() {
+
+        Product product = product(
+                "Coffee",
+                "8900001",
+                "100.00",
+                10
+        );
+
+        when(productRepository.findByIdForUpdate(1L))
+                .thenReturn(Optional.of(product));
+
+        Discount discount = new Discount();
+
+        LocalDateTime now = LocalDateTime.now();
+
+        discount.setName("20% Weekend Sale");
+        discount.setType(DiscountType.PERCENTAGE);
+        discount.setValue(new BigDecimal("20.00"));
+        discount.setStartAt(now.minusHours(1));
+        discount.setEndAt(now.plusHours(1));
+        discount.setActive(true);
+
+        when(discountRepository.findById(1L))
+                .thenReturn(Optional.of(discount));
+
+        when(saleRepository.save(any(Sale.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        CheckoutRequest request = request(
+                1L,
+                2,
+                "9999.00",
+                DiscountType.FIXED,
+                PaymentMethod.CASH
+        );
+
+        request.setDiscountId(1L);
+
+        Sale result = saleService.checkout(request);
+
+        assertThat(result.getSubtotal())
+                .isEqualByComparingTo("200.00");
+
+        assertThat(result.getDiscount())
+                .isEqualByComparingTo("40.00");
+
+        assertThat(result.getTotal())
+                .isEqualByComparingTo("160.00");
+
+        verify(discountRepository)
+                .findById(1L);
+
+        verify(inventoryService)
+                .adjustStock(any(StockAdjustmentRequest.class));
+
+        verify(saleRepository)
+                .save(any(Sale.class));
+    }
+
+    @Test
+    void checkoutRejectsDisabledScheduledDiscount() {
+
+        Discount discount = new Discount();
+
+        LocalDateTime now = LocalDateTime.now();
+
+        discount.setName("Disabled Sale");
+        discount.setType(DiscountType.PERCENTAGE);
+        discount.setValue(new BigDecimal("20.00"));
+        discount.setStartAt(now.minusHours(1));
+        discount.setEndAt(now.plusHours(1));
+        discount.setActive(false);
+
+        when(discountRepository.findById(1L))
+                .thenReturn(Optional.of(discount));
+
+        CheckoutRequest request = request(
+                1L,
+                1,
+                "0.00",
+                DiscountType.FIXED,
+                PaymentMethod.CASH
+        );
+
+        request.setDiscountId(1L);
+
+        assertThatThrownBy(
+                () -> saleService.checkout(request)
+        )
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Discount is disabled");
+
+        verifyNoSaleOrInventoryChange();
+    }
+
+    @Test
+    void checkoutRejectsFutureScheduledDiscount() {
+
+        Discount discount = new Discount();
+
+        LocalDateTime now = LocalDateTime.now();
+
+        discount.setName("Future Sale");
+        discount.setType(DiscountType.PERCENTAGE);
+        discount.setValue(new BigDecimal("20.00"));
+        discount.setStartAt(now.plusHours(1));
+        discount.setEndAt(now.plusHours(2));
+        discount.setActive(true);
+
+        when(discountRepository.findById(1L))
+                .thenReturn(Optional.of(discount));
+
+        CheckoutRequest request = request(
+                1L,
+                1,
+                "0.00",
+                DiscountType.FIXED,
+                PaymentMethod.CASH
+        );
+
+        request.setDiscountId(1L);
+
+        assertThatThrownBy(
+                () -> saleService.checkout(request)
+        )
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Discount is not currently active");
+
+        verifyNoSaleOrInventoryChange();
+    }
+
+    @Test
+    void checkoutRejectsExpiredScheduledDiscount() {
+
+        Discount discount = new Discount();
+
+        LocalDateTime now = LocalDateTime.now();
+
+        discount.setName("Expired Sale");
+        discount.setType(DiscountType.PERCENTAGE);
+        discount.setValue(new BigDecimal("20.00"));
+        discount.setStartAt(now.minusHours(2));
+        discount.setEndAt(now.minusHours(1));
+        discount.setActive(true);
+
+        when(discountRepository.findById(1L))
+                .thenReturn(Optional.of(discount));
+
+        CheckoutRequest request = request(
+                1L,
+                1,
+                "0.00",
+                DiscountType.FIXED,
+                PaymentMethod.CASH
+        );
+
+        request.setDiscountId(1L);
+
+        assertThatThrownBy(
+                () -> saleService.checkout(request)
+        )
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Discount is not currently active");
+
+        verifyNoSaleOrInventoryChange();
+    }
+
+    @Test
+    void checkoutRejectsNonExistentScheduledDiscount() {
+
+        when(discountRepository.findById(999L))
+                .thenReturn(Optional.empty());
+
+        CheckoutRequest request = request(
+                1L,
+                1,
+                "0.00",
+                DiscountType.FIXED,
+                PaymentMethod.CASH
+        );
+
+        request.setDiscountId(999L);
+
+        assertThatThrownBy(
+                () -> saleService.checkout(request)
+        )
+                .isInstanceOf(RuntimeException.class)
+                .hasMessageContaining(
+                        "Discount not found with id: 999"
+                );
+
+        verifyNoSaleOrInventoryChange();
+    }
+
     private Product product(
             String name,
             String barcode,
@@ -595,4 +808,6 @@ class SaleServiceTest {
                 any(Sale.class)
         );
     }
+
+
 }

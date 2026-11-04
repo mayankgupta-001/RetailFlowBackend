@@ -8,13 +8,16 @@ import com.creator.RetailFlow.product.entity.Product;
 import com.creator.RetailFlow.product.repository.ProductRepository;
 import com.creator.RetailFlow.sale.dto.CheckoutItemRequest;
 import com.creator.RetailFlow.sale.dto.CheckoutRequest;
+import com.creator.RetailFlow.sale.entity.Discount;
 import com.creator.RetailFlow.sale.entity.DiscountType;
 import com.creator.RetailFlow.sale.entity.Sale;
 import com.creator.RetailFlow.sale.entity.SaleItem;
+import com.creator.RetailFlow.sale.repository.DiscountRepository;
 import com.creator.RetailFlow.sale.repository.SaleRepository;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import java.time.LocalDateTime;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -31,6 +34,8 @@ public class SaleService {
     private final SaleRepository saleRepository;
     private final ProductRepository productRepository;
     private final InventoryService inventoryService;
+    private final DiscountRepository discountRepository;
+
 
     @Value("${discount.max-amount:5000.00}")
     private BigDecimal maxDiscountAmount = new BigDecimal("5000.00");
@@ -38,11 +43,13 @@ public class SaleService {
     public SaleService(
             SaleRepository saleRepository,
             ProductRepository productRepository,
-            InventoryService inventoryService
+            InventoryService inventoryService,
+            DiscountRepository discountRepository
     ) {
         this.saleRepository = saleRepository;
         this.productRepository = productRepository;
         this.inventoryService = inventoryService;
+        this.discountRepository = discountRepository;
     }
 
     @Transactional
@@ -67,13 +74,11 @@ public class SaleService {
             );
         }
 
-        BigDecimal discountValue = request.getDiscount() == null
-                ? BigDecimal.ZERO
-                : request.getDiscount();
+        Discount scheduledDiscount = null;
 
-        if (discountValue.signum() < 0) {
-            throw new IllegalArgumentException(
-                    "Discount cannot be negative"
+        if (request.getDiscountId() != null) {
+            scheduledDiscount = getActiveScheduledDiscount(
+                    request.getDiscountId()
             );
         }
 
@@ -163,11 +168,25 @@ public class SaleService {
          *
          * The frontend does not control the final discount amount.
          */
-        BigDecimal discount = calculateDiscount(
-                subtotal,
-                discountValue,
-                request.getDiscountType()
-        );
+        BigDecimal discount;
+
+        if (scheduledDiscount != null) {
+            discount = calculateDiscount(
+                    subtotal,
+                    scheduledDiscount.getValue(),
+                    scheduledDiscount.getType()
+            );
+        } else {
+            BigDecimal discountValue = request.getDiscount() == null
+                    ? BigDecimal.ZERO
+                    : request.getDiscount();
+
+            discount = calculateDiscount(
+                    subtotal,
+                    discountValue,
+                    request.getDiscountType()
+            );
+        }
 
         /*
          * Pass 2:
@@ -211,6 +230,35 @@ public class SaleService {
         sale.setPaymentMethod(request.getPaymentMethod());
 
         return saleRepository.save(sale);
+    }
+
+    private Discount getActiveScheduledDiscount(
+            Long discountId
+    ) {
+        Discount discount = discountRepository.findById(discountId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "Discount not found with id: " + discountId
+                        )
+                );
+
+        LocalDateTime now = LocalDateTime.now();
+
+        if (!discount.isActive()) {
+            throw new IllegalArgumentException(
+                    "Discount is disabled"
+            );
+        }
+
+        if (now.isBefore(discount.getStartAt())
+                || now.isAfter(discount.getEndAt())) {
+
+            throw new IllegalArgumentException(
+                    "Discount is not currently active"
+            );
+        }
+
+        return discount;
     }
 
     private BigDecimal calculateDiscount(

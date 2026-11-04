@@ -18,10 +18,7 @@ public class CheckoutRequest {
     private List<CheckoutItemRequest> items;
 
     @NotNull(message = "Discount is required")
-    @DecimalMin(
-            value = "0.00",
-            message = "Discount cannot be negative"
-    )
+    @DecimalMin(value = "0.00", message = "Discount cannot be negative")
     @Digits(
             integer = 10,
             fraction = 2,
@@ -32,8 +29,12 @@ public class CheckoutRequest {
     @NotNull(message = "Discount type is required")
     private DiscountType discountType = DiscountType.FIXED;
 
+    private Long discountId;
+
     @NotNull(message = "Payment method is required")
     private PaymentMethod paymentMethod;
+
+    // getters and setters
 
     public List<CheckoutItemRequest> getItems() {
         return items;
@@ -57,6 +58,14 @@ public class CheckoutRequest {
 
     public void setDiscountType(DiscountType discountType) {
         this.discountType = discountType;
+    }
+
+    public Long getDiscountId() {
+        return discountId;
+    }
+
+    public void setDiscountId(Long discountId) {
+        this.discountId = discountId;
     }
 
     public PaymentMethod getPaymentMethod() {
