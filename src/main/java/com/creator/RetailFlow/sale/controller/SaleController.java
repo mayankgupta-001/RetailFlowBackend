@@ -1,11 +1,17 @@
 package com.creator.RetailFlow.sale.controller;
 
 import com.creator.RetailFlow.sale.dto.CheckoutRequest;
+import com.creator.RetailFlow.sale.dto.PageResponse;
 import com.creator.RetailFlow.sale.dto.SaleItemResponse;
 import com.creator.RetailFlow.sale.dto.SaleResponse;
 import com.creator.RetailFlow.sale.entity.Sale;
 import com.creator.RetailFlow.sale.service.SaleService;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -55,18 +61,48 @@ public class SaleController {
     }
 
     // Revenue reports stay ADMIN-only.
+    //
+    // Paginated so the payload stays bounded no matter how large the
+    // date range is. Response shape: PageResponse
+    // (content, page, size, totalElements, totalPages).
+    //
+    // Dates are ISO-8601, e.g. from=2026-01-01T00:00:00
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping
-    public List<SaleResponse> getSalesBetween(
-            @RequestParam("from") String from,
-            @RequestParam("to") String to
+    public PageResponse<SaleResponse> getSalesBetween(
+            @RequestParam("from")
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+            LocalDateTime from,
+            @RequestParam("to")
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+            LocalDateTime to,
+            @RequestParam(value = "page", defaultValue = "0") int page,
+            @RequestParam(value = "size", defaultValue = "20") int size
     ) {
-        LocalDateTime start = LocalDateTime.parse(from);
-        LocalDateTime end = LocalDateTime.parse(to);
-        return saleService.getSalesBetween(start, end)
-                .stream()
-                .map(this::toResponse)
-                .toList();
+
+        if (page < 0) {
+            throw new IllegalArgumentException(
+                    "'page' must not be negative"
+            );
+        }
+
+        if (size < 1 || size > 100) {
+            throw new IllegalArgumentException(
+                    "'size' must be between 1 and 100"
+            );
+        }
+
+        Pageable pageable = PageRequest.of(
+                page,
+                size,
+                Sort.by(Sort.Direction.DESC, "createdAt")
+        );
+
+        Page<SaleResponse> responsePage = saleService
+                .getSalesBetween(from, to, pageable)
+                .map(this::toResponse);
+
+        return PageResponse.from(responsePage);
     }
 
     @PreAuthorize("hasRole('ADMIN')")
