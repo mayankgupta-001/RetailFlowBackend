@@ -32,6 +32,14 @@ public class CheckoutRequest {
     @NotNull(message = "Discount type is required")
     private DiscountType discountType = DiscountType.FIXED;
 
+    /*
+     * Optional reference to a scheduled discount (issue #15). When set,
+     * the backend resolves and applies the discount itself; the client
+     * can never dictate the value or bypass the schedule. Mutually
+     * exclusive with a manual discount > 0.
+     */
+    private Long discountId;
+
     @NotNull(message = "Payment method is required")
     private PaymentMethod paymentMethod;
 
@@ -57,6 +65,14 @@ public class CheckoutRequest {
 
     public void setDiscountType(DiscountType discountType) {
         this.discountType = discountType;
+    }
+
+    public Long getDiscountId() {
+        return discountId;
+    }
+
+    public void setDiscountId(Long discountId) {
+        this.discountId = discountId;
     }
 
     public PaymentMethod getPaymentMethod() {

@@ -1,5 +1,7 @@
 package com.creator.RetailFlow.sale.service;
 
+import com.creator.RetailFlow.discount.entity.Discount;
+import com.creator.RetailFlow.discount.service.DiscountService;
 import com.creator.RetailFlow.inventory.dto.StockAdjustmentRequest;
 import com.creator.RetailFlow.inventory.service.InventoryService;
 import com.creator.RetailFlow.product.entity.Product;
@@ -49,6 +51,9 @@ class SaleServiceTest {
 
     @Mock
     private InventoryService inventoryService;
+
+    @Mock
+    private DiscountService discountService;
 
     @InjectMocks
     private SaleService saleService;
@@ -634,15 +639,162 @@ class SaleServiceTest {
                 .findBySaleIn(any());
     }
 
+    @Test
+    void checkoutAppliesScheduledFixedDiscount() {
+
+        Product product = product(
+                "Coffee",
+                "8900001",
+                "100.00",
+                10
+        );
+
+        when(productRepository.findByIdForUpdate(1L))
+                .thenReturn(Optional.of(product));
+
+        when(discountService.getApplicableDiscount(5L))
+                .thenReturn(scheduledDiscount(
+                        "Diwali Sale",
+                        DiscountType.FIXED,
+                        "25.00"
+                ));
+
+        when(saleRepository.save(any(Sale.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        CheckoutRequest request = request(
+                1L,
+                2,
+                "0.00",
+                DiscountType.FIXED,
+                PaymentMethod.CASH
+        );
+        request.setDiscountId(5L);
+
+        Sale result = saleService.checkout(request);
+
+        assertThat(result.getSubtotal())
+                .isEqualByComparingTo("200.00");
+
+        assertThat(result.getDiscount())
+                .isEqualByComparingTo("25.00");
+
+        assertThat(result.getTotal())
+                .isEqualByComparingTo("175.00");
+    }
+
+    @Test
+    void checkoutAppliesScheduledPercentageDiscount() {
+
+        Product product = product(
+                "Coffee",
+                "8900001",
+                "100.00",
+                10
+        );
+
+        when(productRepository.findByIdForUpdate(1L))
+                .thenReturn(Optional.of(product));
+
+        when(discountService.getApplicableDiscount(5L))
+                .thenReturn(scheduledDiscount(
+                        "Diwali Sale",
+                        DiscountType.PERCENTAGE,
+                        "20.00"
+                ));
+
+        when(saleRepository.save(any(Sale.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        CheckoutRequest request = request(
+                1L,
+                2,
+                "0.00",
+                DiscountType.FIXED,
+                PaymentMethod.CASH
+        );
+        request.setDiscountId(5L);
+
+        Sale result = saleService.checkout(request);
+
+        assertThat(result.getDiscount())
+                .isEqualByComparingTo("40.00");
+
+        assertThat(result.getTotal())
+                .isEqualByComparingTo("160.00");
+    }
+
+    @Test
+    void checkoutRejectsManualAndScheduledDiscountTogether() {
+
+        CheckoutRequest request = request(
+                1L,
+                2,
+                "10.00",
+                DiscountType.FIXED,
+                PaymentMethod.CASH
+        );
+        request.setDiscountId(5L);
+
+        assertThatThrownBy(
+                () -> saleService.checkout(request)
+        )
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage(
+                        "Use either a manual discount or a scheduled discount, not both"
+                );
+
+        verify(discountService, never())
+                .getApplicableDiscount(any());
+
+        verifyNoSaleOrInventoryChange();
+    }
+
+    @Test
+    void checkoutRejectsDisabledScheduledDiscount() {
+
+        Product product = product(
+                "Coffee",
+                "8900001",
+                "100.00",
+                10
+        );
+
+        when(productRepository.findByIdForUpdate(1L))
+                .thenReturn(Optional.of(product));
+
+        when(discountService.getApplicableDiscount(5L))
+                .thenThrow(new IllegalArgumentException(
+                        "Discount is disabled: Diwali Sale"
+                ));
+
+        CheckoutRequest request = request(
+                1L,
+                2,
+                "0.00",
+                DiscountType.FIXED,
+                PaymentMethod.CASH
+        );
+        request.setDiscountId(5L);
+
+        assertThatThrownBy(
+                () -> saleService.checkout(request)
+        )
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage(
+                        "Discount is disabled: Diwali Sale"
+                );
+
+        verifyNoSaleOrInventoryChange();
+    }
+
     private Product product(
             String name,
             String barcode,
             String sellingPrice,
             int stock
     ) {
-
         Product product = new Product();
-
         product.setName(name);
         product.setBarcode(barcode);
         product.setSellingPrice(
@@ -652,6 +804,21 @@ class SaleServiceTest {
         product.setMinStock(0);
 
         return product;
+    }
+
+    private Discount scheduledDiscount(
+            String name,
+            DiscountType type,
+            String value
+    ) {
+        Discount discount = new Discount();
+        discount.setName(name);
+        discount.setType(type);
+        discount.setValue(new BigDecimal(value));
+        discount.setStartAt(LocalDateTime.now().minusDays(1));
+        discount.setEndAt(LocalDateTime.now().plusDays(1));
+        discount.setActive(true);
+        return discount;
     }
 
     private CheckoutRequest request(
