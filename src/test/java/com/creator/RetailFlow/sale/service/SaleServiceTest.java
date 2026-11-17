@@ -9,14 +9,22 @@ import com.creator.RetailFlow.sale.dto.CheckoutRequest;
 import com.creator.RetailFlow.sale.entity.DiscountType;
 import com.creator.RetailFlow.sale.entity.PaymentMethod;
 import com.creator.RetailFlow.sale.entity.Sale;
+import com.creator.RetailFlow.sale.entity.SaleItem;
+import com.creator.RetailFlow.sale.repository.SaleItemRepository;
 import com.creator.RetailFlow.sale.repository.SaleRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -32,6 +40,9 @@ class SaleServiceTest {
 
     @Mock
     private SaleRepository saleRepository;
+
+    @Mock
+    private SaleItemRepository saleItemRepository;
 
     @Mock
     private ProductRepository productRepository;
@@ -530,6 +541,97 @@ class SaleServiceTest {
 
         assertThat(result.getTotal())
                 .isEqualByComparingTo("200.00");
+    }
+
+    @Test
+    void getSalesBetweenRejectsInvertedRange() {
+
+        LocalDateTime start = LocalDateTime.of(2026, 1, 2, 0, 0);
+        LocalDateTime end = LocalDateTime.of(2026, 1, 1, 0, 0);
+
+        assertThatThrownBy(
+                () -> saleService.getSalesBetween(
+                        start, end, PageRequest.of(0, 20)
+                )
+        )
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage(
+                        "'from' must not be after 'to'"
+                );
+
+        verify(saleRepository, never())
+                .findByCreatedAtBetween(
+                        any(LocalDateTime.class),
+                        any(LocalDateTime.class),
+                        any(Pageable.class)
+                );
+    }
+
+    @Test
+    void getSalesBetweenLoadsPageItemsWithOneQuery() {
+
+        Sale sale = new Sale();
+        sale.setInvoiceNumber("INV-1");
+        ReflectionTestUtils.setField(sale, "id", 1L);
+
+        Page<Sale> page = new PageImpl<>(
+                List.of(sale),
+                PageRequest.of(0, 20),
+                1
+        );
+
+        when(saleRepository.findByCreatedAtBetween(
+                any(LocalDateTime.class),
+                any(LocalDateTime.class),
+                any(Pageable.class)
+        )).thenReturn(page);
+
+        SaleItem item = new SaleItem();
+        item.setSale(sale);
+
+        when(saleItemRepository.findBySaleIn(any()))
+                .thenReturn(List.of(item));
+
+        Page<Sale> result = saleService.getSalesBetween(
+                LocalDateTime.of(2026, 1, 1, 0, 0),
+                LocalDateTime.of(2026, 1, 31, 23, 59),
+                PageRequest.of(0, 20)
+        );
+
+        assertThat(result.getContent()).hasSize(1);
+
+        assertThat(result.getContent().get(0).getItems())
+                .containsExactly(item);
+
+        verify(saleItemRepository)
+                .findBySaleIn(any());
+    }
+
+    @Test
+    void getSalesBetweenSkipsItemQueryForEmptyPage() {
+
+        Page<Sale> emptyPage = new PageImpl<>(
+                List.of(),
+                PageRequest.of(0, 20),
+                0
+        );
+
+        when(saleRepository.findByCreatedAtBetween(
+                any(LocalDateTime.class),
+                any(LocalDateTime.class),
+                any(Pageable.class)
+        )).thenReturn(emptyPage);
+
+        Page<Sale> result = saleService.getSalesBetween(
+                LocalDateTime.of(2026, 1, 1, 0, 0),
+                LocalDateTime.of(2026, 1, 31, 23, 59),
+                PageRequest.of(0, 20)
+        );
+
+        assertThat(result.getContent()).isEmpty();
+
+        verify(saleItemRepository, never())
+                .findBySaleIn(any());
     }
 
     private Product product(

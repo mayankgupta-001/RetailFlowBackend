@@ -7,8 +7,16 @@ import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 
+/*
+ * Flyway only runs outside the "test" profile. Tests use an in-memory
+ * H2 database whose schema is built by Hibernate (ddl-auto=create-drop),
+ * and Postgres-only migrations (e.g. V7's pg_trgm GIN index) would fail
+ * on H2.
+ */
 @Configuration(proxyBeanMethods = false)
+@Profile("!test")
 public class FlywayMigrationConfiguration {
 
     @Bean(initMethod = "migrate")

@@ -11,9 +11,12 @@ import com.creator.RetailFlow.sale.dto.CheckoutRequest;
 import com.creator.RetailFlow.sale.entity.DiscountType;
 import com.creator.RetailFlow.sale.entity.Sale;
 import com.creator.RetailFlow.sale.entity.SaleItem;
+import com.creator.RetailFlow.sale.repository.SaleItemRepository;
 import com.creator.RetailFlow.sale.repository.SaleRepository;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -24,11 +27,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class SaleService {
 
     private final SaleRepository saleRepository;
+    private final SaleItemRepository saleItemRepository;
     private final ProductRepository productRepository;
     private final InventoryService inventoryService;
 
@@ -37,10 +42,12 @@ public class SaleService {
 
     public SaleService(
             SaleRepository saleRepository,
+            SaleItemRepository saleItemRepository,
             ProductRepository productRepository,
             InventoryService inventoryService
     ) {
         this.saleRepository = saleRepository;
+        this.saleItemRepository = saleItemRepository;
         this.productRepository = productRepository;
         this.inventoryService = inventoryService;
     }
@@ -294,7 +301,7 @@ public class SaleService {
 
     public Sale getById(Long id) {
 
-        return saleRepository.findById(id)
+        return saleRepository.findWithItemsById(id)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Sale not found with id: " + id
                 ));
@@ -309,16 +316,57 @@ public class SaleService {
                 ));
     }
 
-    public List<Sale> getSalesBetween(
+    // Paginated report listing. Pages the sales in the database, then
+    // loads every item of the page with ONE extra query, so the whole
+    // request costs 2 queries regardless of page size (instead of one
+    // query per sale, the classic N+1).
+    public Page<Sale> getSalesBetween(
             LocalDateTime start,
-            LocalDateTime end
+            LocalDateTime end,
+            Pageable pageable
     ) {
 
-        return saleRepository
-                .findByCreatedAtBetweenOrderByCreatedAtDesc(
-                        start,
-                        end
-                );
+        if (start.isAfter(end)) {
+            throw new IllegalArgumentException(
+                    "'from' must not be after 'to'"
+            );
+        }
+
+        Page<Sale> page = saleRepository.findByCreatedAtBetween(
+                start,
+                end,
+                pageable
+        );
+
+        loadItemsForPage(page.getContent());
+
+        return page;
+    }
+
+    // Fetches all items belonging to the given sales in a single query
+    // and attaches them to their sale, so the response can be mapped
+    // after the transaction/session is gone (open-in-view is disabled).
+    private void loadItemsForPage(List<Sale> sales) {
+
+        if (sales.isEmpty()) {
+            return;
+        }
+
+        Map<Long, List<SaleItem>> itemsBySaleId = saleItemRepository
+                .findBySaleIn(sales)
+                .stream()
+                .collect(Collectors.groupingBy(
+                        item -> item.getSale().getId()
+                ));
+
+        for (Sale sale : sales) {
+            sale.setItems(
+                    itemsBySaleId.getOrDefault(
+                            sale.getId(),
+                            List.of()
+                    )
+            );
+        }
     }
 
     // Used by the Invoices page so any logged-in user
