@@ -30,7 +30,13 @@ public class Discount {
     @Column(nullable = false)
     private DiscountType type;
 
-    @Column(nullable = false, precision = 12, scale = 2)
+    /*
+     * Column is named discount_value, not value: VALUE is a reserved
+     * word in H2 (used by the test profile for schema generation),
+     * which made the discounts table fail to build there. Postgres
+     * tolerates it, but the explicit name keeps both databases in sync.
+     */
+    @Column(name = "discount_value", nullable = false, precision = 12, scale = 2)
     private BigDecimal value;
 
     // Applicable only when: active == true AND startAt <= now AND now <= endAt.
