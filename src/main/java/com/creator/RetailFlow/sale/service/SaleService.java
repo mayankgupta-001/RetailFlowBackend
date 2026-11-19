@@ -15,6 +15,7 @@ import com.creator.RetailFlow.sale.entity.Sale;
 import com.creator.RetailFlow.sale.entity.SaleItem;
 import com.creator.RetailFlow.sale.repository.SaleItemRepository;
 import com.creator.RetailFlow.sale.repository.SaleRepository;
+import com.creator.RetailFlow.tax.GstCalculator;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
@@ -209,15 +210,36 @@ public class SaleService {
         }
 
         /*
+         * GST (issue #21). Prices are tax-inclusive, so the discount is
+         * apportioned across lines (largest remainder, exact) and each
+         * line splits into taxable value + tax. This never changes what
+         * the customer pays: taxable + tax == subtotal - discount.
+         */
+        GstCalculator.Breakdown taxBreakdown = GstCalculator.calculate(
+                discount,
+                sortedProductIds.stream()
+                        .map(productId -> new GstCalculator.Line(
+                                subtotalByProductId.get(productId),
+                                lockedProducts.get(productId).getTaxRate()
+                        ))
+                        .toList()
+        );
+
+        /*
          * Pass 2:
          * Everything has been validated.
          * Now build sale items and reduce stock.
          */
-        for (Long productId : sortedProductIds) {
+        for (int lineIndex = 0;
+             lineIndex < sortedProductIds.size();
+             lineIndex++) {
 
+            Long productId = sortedProductIds.get(lineIndex);
             Product product = lockedProducts.get(productId);
             int quantity = quantityByProductId.get(productId);
             BigDecimal itemSubtotal = subtotalByProductId.get(productId);
+            GstCalculator.LineTax lineTax =
+                    taxBreakdown.lines().get(lineIndex);
 
             SaleItem saleItem = new SaleItem();
 
@@ -228,6 +250,15 @@ public class SaleService {
             saleItem.setPrice(product.getSellingPrice());
             saleItem.setQuantity(quantity);
             saleItem.setSubtotal(itemSubtotal);
+
+            // Snapshot the tax data: editing the product later must not
+            // change an invoice that has already been issued.
+            saleItem.setTaxRate(product.getTaxRate());
+            saleItem.setHsnCode(product.getHsnCode());
+            saleItem.setTaxableAmount(lineTax.taxableAmount());
+            saleItem.setTaxAmount(lineTax.taxAmount());
+            saleItem.setCgstAmount(lineTax.cgstAmount());
+            saleItem.setSgstAmount(lineTax.sgstAmount());
 
             sale.getItems().add(saleItem);
 
@@ -247,6 +278,10 @@ public class SaleService {
         sale.setSubtotal(subtotal);
         sale.setDiscount(discount);
         sale.setTotal(subtotal.subtract(discount));
+        sale.setTaxableAmount(taxBreakdown.taxableAmount());
+        sale.setTaxAmount(taxBreakdown.taxAmount());
+        sale.setCgstAmount(taxBreakdown.cgstAmount());
+        sale.setSgstAmount(taxBreakdown.sgstAmount());
         sale.setPaymentMethod(request.getPaymentMethod());
 
         return saleRepository.save(sale);

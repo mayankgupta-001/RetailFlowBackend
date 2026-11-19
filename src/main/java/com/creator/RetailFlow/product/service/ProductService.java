@@ -12,6 +12,7 @@ import com.creator.RetailFlow.product.util.BarcodeImageGenerator;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -45,6 +46,12 @@ public class ProductService {
         product.setStock(request.getStock());
         product.setMinStock(request.getMinStock());
         product.setCategory(request.getCategory());
+        product.setTaxRate(
+                request.getTaxRate() == null
+                        ? BigDecimal.ZERO
+                        : request.getTaxRate()
+        );
+        product.setHsnCode(normalizeHsnCode(request.getHsnCode()));
 
         product.setCreatedAt(LocalDateTime.now());
         product.setUpdatedAt(LocalDateTime.now());
@@ -133,6 +140,17 @@ public class ProductService {
         product.setMinStock(request.getMinStock());
         product.setCategory(request.getCategory());
 
+        // Null means "not provided" (older clients), so keep the stored
+        // rate instead of silently zeroing a product's GST.
+        if (request.getTaxRate() != null) {
+            product.setTaxRate(request.getTaxRate());
+        }
+
+        // Blank clears the code; null leaves it untouched.
+        if (request.getHsnCode() != null) {
+            product.setHsnCode(normalizeHsnCode(request.getHsnCode()));
+        }
+
         product.setUpdatedAt(LocalDateTime.now());
 
         Product updatedProduct = productRepository.save(product);
@@ -163,8 +181,18 @@ public class ProductService {
                 product.getStock(),
                 product.getMinStock(),
                 product.getCategory(),
+                product.getTaxRate(),
+                product.getHsnCode(),
                 product.getCreatedAt(),
                 product.getUpdatedAt()
         );
+    }
+
+    private String normalizeHsnCode(String hsnCode) {
+        if (hsnCode == null) {
+            return null;
+        }
+        String trimmed = hsnCode.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 }

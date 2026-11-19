@@ -12,6 +12,8 @@ public class ProductResponse {
     private Integer stock;
     private Integer minStock;
     private String category;
+    private BigDecimal taxRate;
+    private String hsnCode;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -24,6 +26,8 @@ public class ProductResponse {
             Integer stock,
             Integer minStock,
             String category,
+            BigDecimal taxRate,
+            String hsnCode,
             LocalDateTime createdAt,
             LocalDateTime updatedAt
     ) {
@@ -35,6 +39,8 @@ public class ProductResponse {
         this.stock = stock;
         this.minStock = minStock;
         this.category = category;
+        this.taxRate = taxRate;
+        this.hsnCode = hsnCode;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
     }
@@ -69,6 +75,14 @@ public class ProductResponse {
 
     public String getCategory() {
         return category;
+    }
+
+    public BigDecimal getTaxRate() {
+        return taxRate;
+    }
+
+    public String getHsnCode() {
+        return hsnCode;
     }
 
     public LocalDateTime getCreatedAt() {
