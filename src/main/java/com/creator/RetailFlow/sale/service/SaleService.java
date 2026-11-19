@@ -1,5 +1,7 @@
 package com.creator.RetailFlow.sale.service;
 
+import com.creator.RetailFlow.discount.entity.Discount;
+import com.creator.RetailFlow.discount.service.DiscountService;
 import com.creator.RetailFlow.exception.ResourceNotFoundException;
 import com.creator.RetailFlow.inventory.dto.StockAdjustmentRequest;
 import com.creator.RetailFlow.inventory.entity.InventoryTransactionType;
@@ -36,6 +38,7 @@ public class SaleService {
     private final SaleItemRepository saleItemRepository;
     private final ProductRepository productRepository;
     private final InventoryService inventoryService;
+    private final DiscountService discountService;
 
     @Value("${discount.max-amount:5000.00}")
     private BigDecimal maxDiscountAmount = new BigDecimal("5000.00");
@@ -44,12 +47,14 @@ public class SaleService {
             SaleRepository saleRepository,
             SaleItemRepository saleItemRepository,
             ProductRepository productRepository,
-            InventoryService inventoryService
+            InventoryService inventoryService,
+            DiscountService discountService
     ) {
         this.saleRepository = saleRepository;
         this.saleItemRepository = saleItemRepository;
         this.productRepository = productRepository;
         this.inventoryService = inventoryService;
+        this.discountService = discountService;
     }
 
     @Transactional
@@ -81,6 +86,17 @@ public class SaleService {
         if (discountValue.signum() < 0) {
             throw new IllegalArgumentException(
                     "Discount cannot be negative"
+            );
+        }
+
+        /*
+         * A scheduled discount and a manual discount are mutually
+         * exclusive - no stacking (issue #15, out of scope).
+         */
+        if (request.getDiscountId() != null
+                && discountValue.signum() > 0) {
+            throw new IllegalArgumentException(
+                    "Use either a manual discount or a scheduled discount, not both"
             );
         }
 
@@ -169,12 +185,28 @@ public class SaleService {
          * has been calculated from database product prices.
          *
          * The frontend does not control the final discount amount.
+         *
+         * A scheduled discount is referenced by ID and resolved by the
+         * backend (value, type and schedule come from the database).
          */
-        BigDecimal discount = calculateDiscount(
-                subtotal,
-                discountValue,
-                request.getDiscountType()
-        );
+        BigDecimal discount;
+        if (request.getDiscountId() != null) {
+            Discount scheduled =
+                    discountService.getApplicableDiscount(
+                            request.getDiscountId()
+                    );
+            discount = calculateDiscount(
+                    subtotal,
+                    scheduled.getValue(),
+                    scheduled.getType()
+            );
+        } else {
+            discount = calculateDiscount(
+                    subtotal,
+                    discountValue,
+                    request.getDiscountType()
+            );
+        }
 
         /*
          * Pass 2:
