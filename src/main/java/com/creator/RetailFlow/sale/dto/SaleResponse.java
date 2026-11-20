@@ -13,6 +13,10 @@ public class SaleResponse {
     private BigDecimal subtotal;
     private BigDecimal discount;
     private BigDecimal total;
+    private BigDecimal taxableAmount;
+    private BigDecimal taxAmount;
+    private BigDecimal cgstAmount;
+    private BigDecimal sgstAmount;
     private PaymentMethod paymentMethod;
     private LocalDateTime createdAt;
     private List<SaleItemResponse> items;
@@ -63,6 +67,38 @@ public class SaleResponse {
 
     public void setTotal(BigDecimal total) {
         this.total = total;
+    }
+
+    public BigDecimal getTaxableAmount() {
+        return taxableAmount;
+    }
+
+    public void setTaxableAmount(BigDecimal taxableAmount) {
+        this.taxableAmount = taxableAmount;
+    }
+
+    public BigDecimal getTaxAmount() {
+        return taxAmount;
+    }
+
+    public void setTaxAmount(BigDecimal taxAmount) {
+        this.taxAmount = taxAmount;
+    }
+
+    public BigDecimal getCgstAmount() {
+        return cgstAmount;
+    }
+
+    public void setCgstAmount(BigDecimal cgstAmount) {
+        this.cgstAmount = cgstAmount;
+    }
+
+    public BigDecimal getSgstAmount() {
+        return sgstAmount;
+    }
+
+    public void setSgstAmount(BigDecimal sgstAmount) {
+        this.sgstAmount = sgstAmount;
     }
 
     public PaymentMethod getPaymentMethod() {

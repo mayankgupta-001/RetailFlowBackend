@@ -45,6 +45,28 @@ public class SaleItem {
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal subtotal;
 
+    /*
+     * GST snapshot (issue #21). Stored per line so an issued invoice
+     * never changes when a product's rate or HSN is edited later.
+     */
+    @Column(name = "tax_rate", precision = 5, scale = 2)
+    private BigDecimal taxRate;
+
+    @Column(name = "hsn_code", length = 8)
+    private String hsnCode;
+
+    @Column(name = "taxable_amount", precision = 12, scale = 2)
+    private BigDecimal taxableAmount;
+
+    @Column(name = "tax_amount", precision = 12, scale = 2)
+    private BigDecimal taxAmount;
+
+    @Column(name = "cgst_amount", precision = 12, scale = 2)
+    private BigDecimal cgstAmount;
+
+    @Column(name = "sgst_amount", precision = 12, scale = 2)
+    private BigDecimal sgstAmount;
+
     public Long getId() {
         return id;
     }
@@ -103,5 +125,53 @@ public class SaleItem {
 
     public void setSubtotal(BigDecimal subtotal) {
         this.subtotal = subtotal;
+    }
+
+    public BigDecimal getTaxRate() {
+        return taxRate;
+    }
+
+    public void setTaxRate(BigDecimal taxRate) {
+        this.taxRate = taxRate;
+    }
+
+    public String getHsnCode() {
+        return hsnCode;
+    }
+
+    public void setHsnCode(String hsnCode) {
+        this.hsnCode = hsnCode;
+    }
+
+    public BigDecimal getTaxableAmount() {
+        return taxableAmount;
+    }
+
+    public void setTaxableAmount(BigDecimal taxableAmount) {
+        this.taxableAmount = taxableAmount;
+    }
+
+    public BigDecimal getTaxAmount() {
+        return taxAmount;
+    }
+
+    public void setTaxAmount(BigDecimal taxAmount) {
+        this.taxAmount = taxAmount;
+    }
+
+    public BigDecimal getCgstAmount() {
+        return cgstAmount;
+    }
+
+    public void setCgstAmount(BigDecimal cgstAmount) {
+        this.cgstAmount = cgstAmount;
+    }
+
+    public BigDecimal getSgstAmount() {
+        return sgstAmount;
+    }
+
+    public void setSgstAmount(BigDecimal sgstAmount) {
+        this.sgstAmount = sgstAmount;
     }
 }

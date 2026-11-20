@@ -30,6 +30,23 @@ public class Sale {
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal total;
 
+    /*
+     * GST snapshot (issue #21). Nullable: sales created before GST
+     * support genuinely had no tax recorded, and render without a tax
+     * block rather than a misleading 0.00.
+     */
+    @Column(name = "taxable_amount", precision = 12, scale = 2)
+    private BigDecimal taxableAmount;
+
+    @Column(name = "tax_amount", precision = 12, scale = 2)
+    private BigDecimal taxAmount;
+
+    @Column(name = "cgst_amount", precision = 12, scale = 2)
+    private BigDecimal cgstAmount;
+
+    @Column(name = "sgst_amount", precision = 12, scale = 2)
+    private BigDecimal sgstAmount;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private PaymentMethod paymentMethod;
@@ -87,6 +104,38 @@ public class Sale {
 
     public void setTotal(BigDecimal total) {
         this.total = total;
+    }
+
+    public BigDecimal getTaxableAmount() {
+        return taxableAmount;
+    }
+
+    public void setTaxableAmount(BigDecimal taxableAmount) {
+        this.taxableAmount = taxableAmount;
+    }
+
+    public BigDecimal getTaxAmount() {
+        return taxAmount;
+    }
+
+    public void setTaxAmount(BigDecimal taxAmount) {
+        this.taxAmount = taxAmount;
+    }
+
+    public BigDecimal getCgstAmount() {
+        return cgstAmount;
+    }
+
+    public void setCgstAmount(BigDecimal cgstAmount) {
+        this.cgstAmount = cgstAmount;
+    }
+
+    public BigDecimal getSgstAmount() {
+        return sgstAmount;
+    }
+
+    public void setSgstAmount(BigDecimal sgstAmount) {
+        this.sgstAmount = sgstAmount;
     }
 
     public PaymentMethod getPaymentMethod() {

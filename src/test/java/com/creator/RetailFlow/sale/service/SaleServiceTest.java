@@ -788,6 +788,214 @@ class SaleServiceTest {
         verifyNoSaleOrInventoryChange();
     }
 
+    @Test
+    void checkoutSplitsInclusiveTaxOnTaxedProduct() {
+
+        Product product = taxedProduct(
+                "Coffee",
+                "8900001",
+                "118.00",
+                10,
+                "18",
+                "1001"
+        );
+
+        when(productRepository.findByIdForUpdate(1L))
+                .thenReturn(Optional.of(product));
+
+        when(saleRepository.save(any(Sale.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Sale result = saleService.checkout(request(
+                1L,
+                1,
+                "0.00",
+                DiscountType.FIXED,
+                PaymentMethod.CASH
+        ));
+
+        // The customer still pays ₹118 - only the split changes.
+        assertThat(result.getTotal()).isEqualByComparingTo("118.00");
+        assertThat(result.getTaxableAmount()).isEqualByComparingTo("100.00");
+        assertThat(result.getTaxAmount()).isEqualByComparingTo("18.00");
+        assertThat(result.getCgstAmount()).isEqualByComparingTo("9.00");
+        assertThat(result.getSgstAmount()).isEqualByComparingTo("9.00");
+
+        SaleItem item = result.getItems().get(0);
+
+        assertThat(item.getTaxRate()).isEqualByComparingTo("18");
+        assertThat(item.getHsnCode()).isEqualTo("1001");
+        assertThat(item.getTaxableAmount()).isEqualByComparingTo("100.00");
+        assertThat(item.getTaxAmount()).isEqualByComparingTo("18.00");
+        assertThat(item.getCgstAmount()).isEqualByComparingTo("9.00");
+        assertThat(item.getSgstAmount()).isEqualByComparingTo("9.00");
+    }
+
+    @Test
+    void checkoutKeepsTotalsForZeroTaxProduct() {
+
+        Product product = taxedProduct(
+                "Bread",
+                "8900003",
+                "40.00",
+                10,
+                "0",
+                null
+        );
+
+        when(productRepository.findByIdForUpdate(1L))
+                .thenReturn(Optional.of(product));
+
+        when(saleRepository.save(any(Sale.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Sale result = saleService.checkout(request(
+                1L,
+                2,
+                "0.00",
+                DiscountType.FIXED,
+                PaymentMethod.CASH
+        ));
+
+        assertThat(result.getTotal()).isEqualByComparingTo("80.00");
+        assertThat(result.getTaxableAmount()).isEqualByComparingTo("80.00");
+        assertThat(result.getTaxAmount()).isEqualByComparingTo("0.00");
+        assertThat(result.getCgstAmount()).isEqualByComparingTo("0.00");
+        assertThat(result.getSgstAmount()).isEqualByComparingTo("0.00");
+    }
+
+    @Test
+    void checkoutReducesTaxableValueWhenDiscountApplied() {
+
+        Product product = taxedProduct(
+                "Coffee",
+                "8900001",
+                "118.00",
+                10,
+                "18",
+                "1001"
+        );
+
+        when(productRepository.findByIdForUpdate(1L))
+                .thenReturn(Optional.of(product));
+
+        when(saleRepository.save(any(Sale.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        Sale result = saleService.checkout(request(
+                1L,
+                1,
+                "18.00",
+                DiscountType.FIXED,
+                PaymentMethod.CASH
+        ));
+
+        assertThat(result.getTotal()).isEqualByComparingTo("100.00");
+        assertThat(result.getTaxableAmount()).isEqualByComparingTo("84.75");
+        assertThat(result.getTaxAmount()).isEqualByComparingTo("15.25");
+    }
+
+    @Test
+    void checkoutApportionsSaleDiscountAcrossTaxLines() {
+
+        Product first = taxedProduct(
+                "Coffee",
+                "8900001",
+                "118.00",
+                10,
+                "18",
+                "1001"
+        );
+        Product second = taxedProduct(
+                "Tea",
+                "8900002",
+                "82.00",
+                10,
+                "18",
+                "1002"
+        );
+
+        when(productRepository.findByIdForUpdate(1L))
+                .thenReturn(Optional.of(first));
+        when(productRepository.findByIdForUpdate(2L))
+                .thenReturn(Optional.of(second));
+
+        when(saleRepository.save(any(Sale.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        CheckoutRequest request = new CheckoutRequest();
+
+        CheckoutItemRequest firstItem = new CheckoutItemRequest();
+        firstItem.setProductId(1L);
+        firstItem.setQuantity(1);
+
+        CheckoutItemRequest secondItem = new CheckoutItemRequest();
+        secondItem.setProductId(2L);
+        secondItem.setQuantity(1);
+
+        request.setItems(List.of(firstItem, secondItem));
+        request.setDiscount(new BigDecimal("10.00"));
+        request.setDiscountType(DiscountType.FIXED);
+        request.setPaymentMethod(PaymentMethod.CASH);
+
+        Sale result = saleService.checkout(request);
+
+        assertThat(result.getSubtotal()).isEqualByComparingTo("200.00");
+        assertThat(result.getTotal()).isEqualByComparingTo("190.00");
+
+        // Every line must reconcile, and the apportioned line nets must
+        // sum to the discounted sale total (no stray paisa).
+        SaleItem firstLine = result.getItems().get(0);
+        SaleItem secondLine = result.getItems().get(1);
+
+        assertThat(
+                firstLine.getTaxableAmount().add(firstLine.getTaxAmount())
+        ).isEqualByComparingTo("112.10");
+
+        assertThat(
+                secondLine.getTaxableAmount().add(secondLine.getTaxAmount())
+        ).isEqualByComparingTo("77.90");
+
+        BigDecimal lineNetSum = result.getItems()
+                .stream()
+                .map(item -> item.getTaxableAmount().add(item.getTaxAmount()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal lineTaxableSum = result.getItems()
+                .stream()
+                .map(SaleItem::getTaxableAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal lineTaxSum = result.getItems()
+                .stream()
+                .map(SaleItem::getTaxAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        assertThat(lineNetSum).isEqualByComparingTo(result.getTotal());
+        assertThat(lineTaxableSum)
+                .isEqualByComparingTo(result.getTaxableAmount());
+        assertThat(lineTaxSum)
+                .isEqualByComparingTo(result.getTaxAmount());
+
+        assertThat(
+                result.getTaxableAmount().add(result.getTaxAmount())
+        ).isEqualByComparingTo("190.00");
+    }
+
+    private Product taxedProduct(
+            String name,
+            String barcode,
+            String sellingPrice,
+            int stock,
+            String taxRate,
+            String hsnCode
+    ) {
+        Product product = product(name, barcode, sellingPrice, stock);
+        product.setTaxRate(new BigDecimal(taxRate));
+        product.setHsnCode(hsnCode);
+        return product;
+    }
+
     private Product product(
             String name,
             String barcode,

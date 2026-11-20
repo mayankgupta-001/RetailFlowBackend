@@ -32,6 +32,13 @@ public class Product {
 
     private String category;
 
+    // GST rate applied to sellingPrice, which is tax-inclusive (issue #21).
+    @Column(name = "tax_rate", nullable = false, precision = 5, scale = 2)
+    private BigDecimal taxRate = BigDecimal.ZERO;
+
+    @Column(name = "hsn_code", length = 8)
+    private String hsnCode;
+
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 
@@ -75,6 +82,14 @@ public class Product {
         return category;
     }
 
+    public BigDecimal getTaxRate() {
+        return taxRate;
+    }
+
+    public String getHsnCode() {
+        return hsnCode;
+    }
+
     public LocalDateTime getCreatedAt() {
         return createdAt;
     }
@@ -109,6 +124,14 @@ public class Product {
 
     public void setCategory(String category) {
         this.category = category;
+    }
+
+    public void setTaxRate(BigDecimal taxRate) {
+        this.taxRate = taxRate == null ? BigDecimal.ZERO : taxRate;
+    }
+
+    public void setHsnCode(String hsnCode) {
+        this.hsnCode = hsnCode;
     }
 
     public void setCreatedAt(LocalDateTime createdAt) {

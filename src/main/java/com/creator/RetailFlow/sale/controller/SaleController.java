@@ -119,6 +119,10 @@ public class SaleController {
         response.setSubtotal(sale.getSubtotal());
         response.setDiscount(sale.getDiscount());
         response.setTotal(sale.getTotal());
+        response.setTaxableAmount(sale.getTaxableAmount());
+        response.setTaxAmount(sale.getTaxAmount());
+        response.setCgstAmount(sale.getCgstAmount());
+        response.setSgstAmount(sale.getSgstAmount());
         response.setPaymentMethod(sale.getPaymentMethod());
         response.setCreatedAt(sale.getCreatedAt());
         response.setVoided(sale.isVoided());
@@ -138,6 +142,12 @@ public class SaleController {
                     itemResponse.setPrice(item.getPrice());
                     itemResponse.setQuantity(item.getQuantity());
                     itemResponse.setSubtotal(item.getSubtotal());
+                    itemResponse.setTaxRate(item.getTaxRate());
+                    itemResponse.setHsnCode(item.getHsnCode());
+                    itemResponse.setTaxableAmount(item.getTaxableAmount());
+                    itemResponse.setTaxAmount(item.getTaxAmount());
+                    itemResponse.setCgstAmount(item.getCgstAmount());
+                    itemResponse.setSgstAmount(item.getSgstAmount());
                     return itemResponse;
                 })
                 .toList();
