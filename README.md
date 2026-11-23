@@ -444,9 +444,22 @@ Create a `.env` file containing the required configuration.
 Example:
 
 ```env
-DATABASE_USER=your_username
-DATABASE_PASS=your_password
+SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/retailflow
+DB_USERNAME=your_username
+DB_PASSWORD=your_password
 JWT_SECRET=your_secure_jwt_secret
+
+# Required - the app fails to start without these. Used once to seed the
+# first ADMIN account (skipped if the username already exists).
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=change_me_before_deploying
+
+# Browser origin allowed to call this API. Comma-separated for several.
+FRONTEND_URL=http://localhost:5173
+
+# Optional wildcard origins for per-deployment subdomains, e.g. Vercel
+# previews: https://retailflow-frontend-*.vercel.app
+CORS_ALLOWED_ORIGIN_PATTERNS=
 ```
 
 > **Important:** Never commit real credentials, passwords, tokens, or other secrets to GitHub.
