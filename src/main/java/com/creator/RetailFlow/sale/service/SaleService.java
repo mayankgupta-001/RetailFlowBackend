@@ -29,7 +29,6 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -40,6 +39,7 @@ public class SaleService {
     private final ProductRepository productRepository;
     private final InventoryService inventoryService;
     private final DiscountService discountService;
+    private final InvoiceNumberGenerator invoiceNumberGenerator;
 
     @Value("${discount.max-amount:5000.00}")
     private BigDecimal maxDiscountAmount = new BigDecimal("5000.00");
@@ -49,13 +49,15 @@ public class SaleService {
             SaleItemRepository saleItemRepository,
             ProductRepository productRepository,
             InventoryService inventoryService,
-            DiscountService discountService
+            DiscountService discountService,
+            InvoiceNumberGenerator invoiceNumberGenerator
     ) {
         this.saleRepository = saleRepository;
         this.saleItemRepository = saleItemRepository;
         this.productRepository = productRepository;
         this.inventoryService = inventoryService;
         this.discountService = discountService;
+        this.invoiceNumberGenerator = invoiceNumberGenerator;
     }
 
     @Transactional
@@ -140,7 +142,7 @@ public class SaleService {
                 .toList();
 
         Sale sale = new Sale();
-        sale.setInvoiceNumber(generateInvoiceNumber());
+        sale.setInvoiceNumber(invoiceNumberGenerator.next());
 
         BigDecimal subtotal = BigDecimal.ZERO;
 
@@ -491,13 +493,5 @@ public class SaleService {
 
         sale.setVoided(true);
         return saleRepository.save(sale);
-    }
-
-    private String generateInvoiceNumber() {
-
-        return "INV-"
-                + UUID.randomUUID()
-                .toString()
-                .toUpperCase();
     }
 }
