@@ -72,7 +72,8 @@ RetailFlow is divided into separate frontend and backend repositories.
 
 ### 🧾 Invoice & Sale Management
 
-- Unique invoice number generation
+- GST-compliant invoice numbers: `INV-<FY>-<serial>`, e.g. `INV-26-27-0001`
+- Consecutive serial per financial year, restarting on April 1
 - Invoice lookup
 - Retrieve individual sales
 - Historical sale lookup

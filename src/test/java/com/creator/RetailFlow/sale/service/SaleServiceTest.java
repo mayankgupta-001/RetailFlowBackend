@@ -14,6 +14,7 @@ import com.creator.RetailFlow.sale.entity.Sale;
 import com.creator.RetailFlow.sale.entity.SaleItem;
 import com.creator.RetailFlow.sale.repository.SaleItemRepository;
 import com.creator.RetailFlow.sale.repository.SaleRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -33,6 +34,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -55,8 +57,20 @@ class SaleServiceTest {
     @Mock
     private DiscountService discountService;
 
+    @Mock
+    private InvoiceNumberGenerator invoiceNumberGenerator;
+
     @InjectMocks
     private SaleService saleService;
+
+    // Invoice numbering has its own test; here we only need a value so
+    // the sale is well formed. Lenient because several tests reject the
+    // checkout before a number is ever requested.
+    @BeforeEach
+    void stubInvoiceNumber() {
+        lenient().when(invoiceNumberGenerator.next())
+                .thenReturn("INV-26-27-0001");
+    }
 
     @Test
     void checkoutCalculatesFixedDiscountCorrectly() {
